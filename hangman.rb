@@ -28,24 +28,30 @@ class Game
       [
         !input.nil?,
         input.length == 1,
-        !guessed_letters.include?(letter)
+        !guessed_letters.include?(input)
       ].all?
     end
     
-    def correct_guess?
+    def correct_guess? letter
       current_word.include?(letter)
     end
     
     def guess! letter
-      return unless letter.chomp! && valid_guess?(letter)
-    
-      if correct_guess?
+      return unless letter.chomp!.nil? && valid_guess?(letter)
+      self.notice = "Passed"
+
+      if correct_guess? letter
         self.notice = ["Good job!", "You got it!"].sample
 
       else
         guessed_incorrectly!
         self.notice = ["Nope!", "Not quite!"].sample
       end
+
+      self.guessed_letters << letter
+    end
+
+    def guessed_correctly letter
     end
 
     def guessed_incorrectly!
@@ -65,7 +71,9 @@ class Game
     end    
     
     def censored_word
-      current_word + '_'
+      current_word.chars.map do |c|
+        guessed_letters.include?(c) ? c : '_'
+      end.join ' '
     end
   end
 
@@ -107,7 +115,9 @@ class Game
     payload = [
       'You are currently playing.',
       "You typed #{input}",
-      "You have #{game.guesses_left} guesses left"
+      "You have #{game.guesses_left} guesses left",
+      "The word is #{game.current_word}",
+      "Censored is #{game.censored_word}",
     ]
 
     game.guess! input.chomp
