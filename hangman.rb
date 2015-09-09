@@ -1,5 +1,4 @@
 require 'socket' # TCPServer, TCPSocket
-require 'state_machines'
 
 server = TCPServer.new('localhost', 9001)
 
@@ -8,46 +7,46 @@ def debug message, channel=:debug
 end
 
 class Game
-  attr_accessor :socket, :lives
-  
-  state_machine :state, initial: :initializing do
-    event :show_start_menu do
-      transition :ready => :menu
-    end
-    
-    event :start_new_game do
-      transition menu: :active_game
-    end
-    
-    event :play_game do
-      transition :active_game => :active_game
-    end
-    
-    event :game_over do
-      transition :active_game => :game_over
-    end
+  attr_accessor :socket, :state
 
-    event :reset do
-      transition :game_over => :ready
-    end
-    
-    def initialize
-      super()
-    end
-  end
+  STATES = %i(start_menu active_game game_over)
 
   #todo allow writing to multiple sockets  
   def attach_socket output_socket
     @socket = output_socket
   end
+
+  def transition_state new_state
+    puts "Transitioning #{state} --> #{new_state}"
+    guard_method = "can_#{new_state}?"
+    return if respond_to?(guard_method) && send(guard_method)
+    puts "Guard clause passed"
+
+    return unless STATES.include? new_state
+    
+    self.state = new_state
+    puts "state is now #{state}"
+
+    initializer = "initialize_#{new_state}"
+    send(initializer) if respond_to? initializer
+  end
   
+  def initialize_active_game
+
+  end
+
   def show_start_menu
     socket.puts [ #todo center text in bounding box
       'Welcome to the Super Easy Hangman Telnet Server (SETHS)',
       'Would you like to play a game?'
     ].join "\r\n"
-
-    super
+  end
+  
+  def play_game command
+    socket.puts [
+      'You are currently playing.',
+      "You typed #{command}"
+    ].join "\r\n"
   end
 end
 
@@ -60,17 +59,29 @@ debug "A client has connected!", :success
 game = Game.new
 game.attach_socket socket
 game.state = :ready
+input = nil
+
 loop do
   socket.puts game.state
-  game.show_start_menu! if game.can_show_start_menu?
+  
+  case game.state
+  when :ready
+    game.show_start_menu
+    game.transition_state :start_menu
+
+  when :start_menu
+    game.transition_state :active_game if input.chomp == 'y'
+
+  when :active_game
+    game.play_game input
+
+  when :game_over
+    game.transition_state :ready       if input.chomp == 'y'
+
+  end
   
   input = socket.gets #blocking #todo allow for multi-line commands
   debug input
-  
-  game.start_new_game if game.can_start_new_game? && input.chomp == 'y'
-  game.play_game      if game.can_play_game?
-  game.game_over      if game.can_game_over?
-  game.reset          if game.can_reset? && input.chomp == 'y'
 end
 
 socket.close
