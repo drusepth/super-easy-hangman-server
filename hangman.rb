@@ -6,6 +6,14 @@ def debug message, channel=:debug
   STDERR.puts "#{channel}: #{message}"
 end
 
+def affirmative? input
+  %w(y Y yes yep uh-huh).include? input
+end
+
+def negatory? input
+  %w(n N no nope exit quit).include? input
+end
+
 class Game
   attr_accessor :socket, :state, :game
 
@@ -38,7 +46,6 @@ class Game
     
     def guess! letter
       return unless letter.chomp!.nil? && valid_guess?(letter)
-      self.notice = "Passed"
 
       if correct_guess? letter
         self.notice = ["Good job!", "You got it!"].sample
@@ -85,11 +92,14 @@ class Game
         ' |   [5] [4]',
         ' |',
         ' ===================== Guessed: [guessed]',
-        ' #####################',
+        ' ##################### [notice]',
         '',
         ' Guess a letter to save the man: '
       ].map {|line| replace_body_parts line }
       .map {|line| tokenize line }
+
+      screen.last.chomp!
+      screen
     end
 
 
@@ -104,7 +114,7 @@ class Game
       }
 
       (0..5).each do |part_id| #todo this variable name is awful
-        line.gsub! "[#{part_id}]", (guesses_left > part_id ? part_id.to_s : ' ')
+        line.gsub! "[#{part_id}]", (guesses_left > part_id ? body_parts[part_id.to_s] : ' ')
       end
 
       line
@@ -112,8 +122,9 @@ class Game
 
     def tokenize line
       line.gsub!('[censored]', censored_word) #todo dictionary these
-      line.gsub!('[guessed]',  guessed_letters.join(', '))
+      line.gsub!('[guessed]',  guessed_letters.sort.join(', '))
       line.gsub!('[guesses]',  guesses_left.to_s)
+      line.gsub!('[notice]',   "~ #{self.notice}")
       line
     end
   end
@@ -124,15 +135,12 @@ class Game
   end
 
   def transition_state new_state
-    puts "Transitioning #{state} --> #{new_state}"
     guard_method = "can_#{new_state}?"
     return if respond_to?(guard_method) && send(guard_method)
-    puts "Guard clause passed"
-
     return unless STATES.include? new_state
     
+    debug "State: #{state} --> #{new_state}", :debug
     self.state = new_state
-    puts "state is now #{state}"
 
     initializer = "initialize_#{new_state}"
     send(initializer) if respond_to? initializer
@@ -146,8 +154,19 @@ class Game
   def show_start_menu
     socket.puts [ #todo center text in bounding box
       'Welcome to the Super Easy Hangman Telnet Server (SETHS)',
-      'Would you like to play a game?'
+      'Would you like to play a game? [y/n]'
     ].join "\r\n"
+  end
+
+  def show_game_over_screen
+    screen = [
+      "Game over!",
+    ]
+    screen << "Congratulations, you won!" if game.won?
+    screen << "Better luck next time!"    if game.loss?
+    screen << "Want to give it another go? [y/n]"
+
+    socket.puts screen.join "\r\n"
   end
   
   def play_game input
@@ -155,17 +174,7 @@ class Game
   end
 
   def draw_screen
-    screen = game.screen
-
-    payload = screen + [
-      'You are currently playing.',
-      "You have #{game.guesses_left} guesses left",
-      "The word is #{game.current_word}",
-      "Censored is #{game.censored_word}",
-    ]
-    payload << "Notice #{game.notice}" if game.notice
-    
-    socket.puts payload.join("\r\n")
+    socket.puts game.screen.join("\r\n")
   end
   
   def game_over
@@ -189,21 +198,21 @@ game.attach_socket socket
 game.show_start_menu
 game.transition_state :start_menu
 
-input = nil
+input, skip_input = nil, nil #todo do you really have to init vars like this?
 
 loop do
-  socket.puts game.state
+  # gets is blocking
+  input = socket.gets unless skip_input
+  skip_input = nil
 
-  input = socket.gets #blocking #todo allow for multi-line commands
+  input.chomp!
   debug input, :input
   
   case game.state
-  when :ready
-    game.show_start_menu
-    game.transition_state :start_menu
-
   when :start_menu
-    game.transition_state :active_game if input.chomp == 'y'
+    game.show_start_menu
+    game.transition_state :active_game if affirmative? input
+    skip_input = true                  if affirmative? input
 
   when :active_game
     game.play_game input
@@ -212,7 +221,9 @@ loop do
     game.transition_state :game_over   if game.game.game_over? #dammit
 
   when :game_over
-    game.transition_state :ready       if input.chomp == 'y'
+    game.show_game_over_screen
+    game.transition_state :active_game if affirmative? input
+    skip_input = true                  if affirmative? input
 
   end
 end
