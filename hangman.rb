@@ -23,13 +23,15 @@ class Game
     attr_accessor :current_word, :guessed_letters, :guesses_left, :notice
 
     def initialize
-      self.current_word    = word_list.sample
+      self.current_word    = word_list.sample.chomp
       self.guessed_letters = []
       self.guesses_left    = 7
     end
 
     def word_list
-      %w(bagels sandwich letters)
+      IO.readlines('wordlist.txt')
+    rescue
+      %w(bagels sandwich letters llama pancakes)
     end
     
     def valid_guess? input
