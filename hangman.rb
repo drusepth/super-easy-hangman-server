@@ -9,7 +9,7 @@ end
 class Game
   attr_accessor :socket, :state, :game
 
-  STATES = %i(start_menu active_game game_over)
+  STATES = %i(start_menu active_game game_over scoreboard about)
 
   class Hangman
     attr_accessor :current_word, :guessed_letters, :guesses_left, :notice
@@ -17,7 +17,7 @@ class Game
     def initialize
       self.current_word    = word_list.sample
       self.guessed_letters = []
-      self.guesses_left    = 8
+      self.guesses_left    = 7
     end
 
     def word_list
@@ -75,6 +75,47 @@ class Game
         guessed_letters.include?(c) ? c : '_'
       end.join ' '
     end
+
+    def screen
+      screen = [
+        '  ___',
+        ' |   `[0] ',
+        ' |   [2][1][3]    [censored]',
+        '"|    [1]       Guesses left: [guesses]',
+        ' |   [5] [4]',
+        ' |',
+        ' ===================== Guessed: [guessed]',
+        ' #####################',
+        '',
+        ' Guess a letter to save the man: '
+      ].map {|line| replace_body_parts line }
+      .map {|line| tokenize line }
+    end
+
+
+    def replace_body_parts line
+      body_parts = { #todo config
+        '0' => 'o',
+        '1' => '|',
+        '2' => '\\',
+        '3' => '/',
+        '4' => '\\',
+        '5' => '/'
+      }
+
+      (0..5).each do |part_id| #todo this variable name is awful
+        line.gsub! "[#{part_id}]", (guesses_left > part_id ? part_id.to_s : ' ')
+      end
+
+      line
+    end
+
+    def tokenize line
+      line.gsub!('[censored]', censored_word) #todo dictionary these
+      line.gsub!('[guessed]',  guessed_letters.join(', '))
+      line.gsub!('[guesses]',  guesses_left.to_s)
+      line
+    end
   end
 
   #todo allow writing to multiple sockets  
@@ -110,17 +151,18 @@ class Game
   end
   
   def play_game input
-    return game_over if game.game_over?
-    
-    payload = [
+    game.guess! input.chomp
+  end
+
+  def draw_screen
+    screen = game.screen
+
+    payload = screen + [
       'You are currently playing.',
-      "You typed #{input}",
       "You have #{game.guesses_left} guesses left",
       "The word is #{game.current_word}",
       "Censored is #{game.censored_word}",
     ]
-
-    game.guess! input.chomp
     payload << "Notice #{game.notice}" if game.notice
     
     socket.puts payload.join("\r\n")
@@ -143,11 +185,17 @@ socket = server.accept
 debug "A client has connected!", :success
 game = Game.new
 game.attach_socket socket
-game.state = :ready
+
+game.show_start_menu
+game.transition_state :start_menu
+
 input = nil
 
 loop do
   socket.puts game.state
+
+  input = socket.gets #blocking #todo allow for multi-line commands
+  debug input, :input
   
   case game.state
   when :ready
@@ -159,14 +207,14 @@ loop do
 
   when :active_game
     game.play_game input
+    game.draw_screen
+
+    game.transition_state :game_over   if game.game.game_over? #dammit
 
   when :game_over
     game.transition_state :ready       if input.chomp == 'y'
 
   end
-  
-  input = socket.gets #blocking #todo allow for multi-line commands
-  debug input
 end
 
 socket.close
