@@ -7,9 +7,67 @@ def debug message, channel=:debug
 end
 
 class Game
-  attr_accessor :socket, :state
+  attr_accessor :socket, :state, :game
 
   STATES = %i(start_menu active_game game_over)
+
+  class Hangman
+    attr_accessor :current_word, :guessed_letters, :guesses_left, :notice
+
+    def initialize
+      self.current_word    = word_list.sample
+      self.guessed_letters = []
+      self.guesses_left    = 8
+    end
+
+    def word_list
+      %w(bagels sandwich letters)
+    end
+    
+    def valid_guess? input
+      [
+        !input.nil?,
+        input.length == 1,
+        !guessed_letters.include?(letter)
+      ].all?
+    end
+    
+    def correct_guess?
+      current_word.include?(letter)
+    end
+    
+    def guess! letter
+      return unless letter.chomp! && valid_guess?(letter)
+    
+      if correct_guess?
+        self.notice = ["Good job!", "You got it!"].sample
+
+      else
+        guessed_incorrectly!
+        self.notice = ["Nope!", "Not quite!"].sample
+      end
+    end
+
+    def guessed_incorrectly!
+      self.guesses_left -= 1
+    end
+
+    def game_over?
+      won? || loss?
+    end
+
+    def won?
+      self.guesses_left > 0 && !censored_word.include?('_') #todo actually check letters, not inverse
+    end
+
+    def loss?
+      guesses_left < 1
+    end    
+    
+    def censored_word
+      current_word + '_'
+    end
+  end
 
   #todo allow writing to multiple sockets  
   def attach_socket output_socket
@@ -32,7 +90,8 @@ class Game
   end
   
   def initialize_active_game
-
+    debug 'Initializing a new Hangman game', :success
+    self.game = Game::Hangman.new
   end
 
   def show_start_menu
@@ -42,12 +101,28 @@ class Game
     ].join "\r\n"
   end
   
-  def play_game command
-    socket.puts [
+  def play_game input
+    return game_over if game.game_over?
+    
+    payload = [
       'You are currently playing.',
-      "You typed #{command}"
-    ].join "\r\n"
+      "You typed #{input}",
+      "You have #{game.guesses_left} guesses left"
+    ]
+
+    game.guess! input.chomp
+    payload << "Notice #{game.notice}" if game.notice
+    
+    socket.puts payload.join("\r\n")
   end
+  
+  def game_over
+    socket.puts [
+      "Game over! Won? #{game.won?} / Lost? #{game.loss?}",
+      'Play again?'
+    ].join "\r\n"
+  end  
+  
 end
 
 #todo allow more than 1 connection at a time
