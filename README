@@ -1,0 +1,5 @@
+Server runs with `ruby hangman.rb`.
+
+Connect to it with another terminal by running `telnet localhost 9001`.
+
+You can play hangman!

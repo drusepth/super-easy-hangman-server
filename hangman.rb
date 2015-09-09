@@ -7,11 +7,11 @@ def debug message, channel=:debug
 end
 
 def affirmative? input
-  %w(y Y yes yep uh-huh).include? input
+  %w(y Y yes yep yeah uh-huh sure k ok fuckyeah).include? input
 end
 
 def negatory? input
-  %w(n N no nope exit quit).include? input
+  %w(n N no nope exit quit die suicide).include? input
 end
 
 class Game
@@ -226,6 +226,9 @@ loop do
     break                              if negatory? input
     game.transition_state :active_game if affirmative? input
     skip_input = true                  if affirmative? input
+
+  #todo scoreboard
+  #todo about
 
   end
 end
