@@ -162,8 +162,9 @@ class Game
     screen = [
       "Game over!",
     ]
-    screen << "Congratulations, you won!" if game.won?
-    screen << "Better luck next time!"    if game.loss?
+    screen << "Congratulations, you won!"            if game.won?
+    screen << "Better luck next time!"               if game.loss?
+    screen << "The word was '#{game.current_word}'." if game.loss?
     screen << "Want to give it another go? [y/n]"
 
     socket.puts screen.join "\r\n"
@@ -176,13 +177,6 @@ class Game
   def draw_screen
     socket.puts game.screen.join("\r\n")
   end
-  
-  def game_over
-    socket.puts [
-      "Game over! Won? #{game.won?} / Lost? #{game.loss?}",
-      'Play again?'
-    ].join "\r\n"
-  end  
   
 end
 
@@ -202,6 +196,7 @@ input, skip_input = nil, nil #todo do you really have to init vars like this?
 
 loop do
   # gets is blocking
+  input = ""
   input = socket.gets unless skip_input
   skip_input = nil
 
@@ -211,6 +206,7 @@ loop do
   case game.state
   when :start_menu
     game.show_start_menu
+    break                              if negatory? input
     game.transition_state :active_game if affirmative? input
     skip_input = true                  if affirmative? input
 
@@ -218,10 +214,14 @@ loop do
     game.play_game input
     game.draw_screen
 
-    game.transition_state :game_over   if game.game.game_over? #dammit
+    if game.game.game_over? #dammit
+      game.transition_state :game_over   
+      skip_input = true
+    end
 
   when :game_over
     game.show_game_over_screen
+    break                              if negatory? input
     game.transition_state :active_game if affirmative? input
     skip_input = true                  if affirmative? input
 
