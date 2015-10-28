@@ -1,6 +1,6 @@
 require 'socket' # TCPServer, TCPSocket
 
-server = TCPServer.new('localhost', 9001)
+server = TCPServer.new('0.0.0.0', 9001)
 
 def debug message, channel=:debug
   STDERR.puts "#{channel}: #{message}"
@@ -149,8 +149,8 @@ class Game
   end
   
   def initialize_active_game
-    debug 'Initializing a new Hangman game', :success
     self.game = Game::Hangman.new
+    debug "Initializing a new Hangman game; word is #{self.game.current_word}", :success
   end
 
   def show_start_menu
